@@ -1,42 +1,160 @@
 <!DOCTYPE html>
-<!-- saved from url=(0032)https://foodmatch.onrender.com/ -->
-<html lang="ja"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Foodmatch</title>
-    <link rel="stylesheet" type="text/css" href="./foodmatch_files/style.css">
-  </head>
-  
-  <body>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Foodmatch - 食材検出＆レシピ提案</title>
+    <link rel="stylesheet" type="text/css" href="./foodmatch_files_test2/style.css">
+</head>
+<body>
     <div class="main">
-      <!--画面左側-->
-      <div class="left-panel">
-        <img src="./foodmatch_files/logo.png" alt="Foodmatch">
-        <h1>冷蔵庫内の画像からレシピを提案</h1>
-        <p>画像を選択してください</p>
-        <form id="upload-form" method="post" enctype="multipart/form-data" action="https://foodmatch.onrender.com/result">
-          <div class="center-button">
-            <input type="file" accept="image/*" id="input_image" name="file" onchange="previewImage()">
-            <div class="image-container">
-              <img src="https://foodmatch.onrender.com/" id="preview" alt="選択された画像" style="display:none;">
-            </div>
-            <button type="submit" id="upload-button" disabled="">レシピを検索</button>
-          </div>
-        </form>
-      </div>
+        <!-- 左側パネル -->
+        <div class="left-panel">
+            <img src="./foodmatch_files_test2/logo.png" alt="Foodmatch">
+            <h1>冷蔵庫内の画像からレシピを提案</h1>
+            <p>画像を選択してください</p>
+            <form id="upload-form" method="post" enctype="multipart/form-data">
+                <div class="center-button">
+                    <input type="file" accept="image/*" id="input_image" name="image" onchange="previewAndDetect()">
+                    <div class="image-container">
+                        <img id="preview" alt="選択された画像" style="display:none; max-width: 100%; margin-top: 10px;">
+                    </div>
+                    <ul id="detected-items"></ul>
+                    <button type="button" id="upload-button" disabled>クックパッドで検索</button>
+                </div>
+            </form>
+        </div>
 
-      <!--画面右側-->
-      <div class="right-panel">
-        <div class="background-image">
-          <div class="gradient-overlay"></div>
-          <img src="./foodmatch_files/img.jpg" alt="料理">
-        </div>        
-      </div>
-
-
+        <!-- 右側パネル -->
+        <div class="right-panel">
+            <div class="background-image">
+                <div class="gradient-overlay"></div>
+                <img src="./foodmatch_files_test2/img.jpg" alt="料理">
+            </div>        
+        </div>
     </div>
 
     <div class="footer">@2024 Foodmatch</div>
-    <script src="./foodmatch_files/script.js"></script>
-  
-</body></html>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <script>
+        // 英語から日本語へのクラス名マッピング
+        const classTranslations = {
+            "person": "人",
+            "bicycle": "自転車",
+            "car": "車",
+            "motorcycle": "オートバイ",
+            "airplane": "飛行機",
+            "bus": "バス",
+            "train": "電車",
+            "truck": "トラック",
+            "boat": "ボート",
+            "traffic light": "信号",
+            "fire hydrant": "消火栓",
+            "stop sign": "一時停止標識",
+            "parking meter": "駐車メーター",
+            "bench": "ベンチ",
+            "bird": "鳥",
+            "cat": "猫",
+            "dog": "犬",
+            "horse": "馬",
+            "sheep": "羊",
+            "cow": "牛",
+            "elephant": "象",
+            "bear": "熊",
+            "zebra": "シマウマ",
+            "giraffe": "キリン",
+            "backpack": "リュックサック",
+            "umbrella": "傘",
+            "handbag": "ハンドバッグ",
+            "tie": "ネクタイ",
+            "suitcase": "スーツケース",
+            "banana": "バナナ",
+            "apple": "りんご",
+            "sandwich": "サンドイッチ",
+            "orange": "オレンジ",
+            "broccoli": "ブロッコリー",
+            "carrot": "にんじん",
+            "hot dog": "ホットドッグ",
+            "pizza": "ピザ",
+            "donut": "ドーナツ",
+            "cake": "ケーキ",
+            "chair": "椅子",
+            "couch": "ソファ",
+            "potted plant": "鉢植え",
+            "bed": "ベッド",
+            "dining table": "食卓",
+            "toilet": "トイレ",
+            "tv": "テレビ",
+            "laptop": "ノートパソコン",
+            "mouse": "マウス",
+            "remote": "リモコン",
+            "keyboard": "キーボード",
+            "cell phone": "携帯電話",
+            "microwave": "電子レンジ",
+            "oven": "オーブン",
+            "toaster": "トースター",
+            "sink": "流し台",
+            "refrigerator": "冷蔵庫",
+            "book": "本",
+            "clock": "時計",
+            "vase": "花瓶",
+            "scissors": "はさみ",
+            "teddy bear": "テディベア",
+            "hair drier": "ヘアドライヤー",
+            "toothbrush": "歯ブラシ"
+        };
+
+        async function previewAndDetect() {
+            const fileInput = document.getElementById('input_image');
+            const previewImg = document.getElementById('preview');
+            const uploadButton = document.getElementById('upload-button');
+            const detectedItemsList = document.getElementById('detected-items');
+
+            if (fileInput.files && fileInput.files[0]) {
+                const reader = new FileReader();
+                reader.onload = async function(e) {
+                    previewImg.src = e.target.result;
+                    previewImg.style.display = 'block';
+
+                    // coco-ssdによる物体検出
+                    const detectedItems = await detectObjects(previewImg);
+                    detectedItemsList.innerHTML = ''; // 検出結果をクリア
+                    detectedItems.forEach(item => {
+                        const translatedItem = classTranslations[item] || item; // 日本語名に変換
+                        const li = document.createElement('li');
+                        li.textContent = translatedItem;
+                        detectedItemsList.appendChild(li);
+                    });
+
+                    uploadButton.disabled = detectedItems.length === 0; // 検出結果がある場合にボタンを有効化
+                };
+                reader.readAsDataURL(fileInput.files[0]);
+            } else {
+                previewImg.style.display = 'none';
+                detectedItemsList.innerHTML = '';
+                uploadButton.disabled = true;
+            }
+        }
+
+        async function detectObjects(imageElement) {
+            const model = await cocoSsd.load();
+            const predictions = await model.detect(imageElement);
+            console.log('検出結果:', predictions);
+
+            return predictions.map(prediction => prediction.class);
+        }
+
+        document.getElementById('upload-button').addEventListener('click', function(e) {
+            e.preventDefault();
+            const detectedItemsList = Array.from(document.getElementById('detected-items').children);
+            const detectedItems = detectedItemsList.map(item => item.textContent);
+            const searchQuery = detectedItems.join(' ');
+            const searchUrl = `https://cookpad.com/search/${encodeURIComponent(searchQuery)}`;
+            window.open(searchUrl, '_blank');
+        });
+    </script>
+</body>
+</html>
+
